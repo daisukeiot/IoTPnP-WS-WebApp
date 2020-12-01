@@ -20,7 +20,6 @@ using System.Net.Http;
 using System.Text.RegularExpressions;
 using Microsoft.Azure.DigitalTwins.Parser;
 using System.Net;
-using Microsoft.Azure.Devices.Provisioning.Service;
 
 namespace Portal.Controllers
 {
@@ -52,198 +51,23 @@ namespace Portal.Controllers
             return View();
         }
 
-        /*************************************************************
-        * IoT Hub
-        *************************************************************/
-        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.registrymanager?view=azure-dotnet
-        #region IoTHub
-
-        // Retrieve the specified Device object.
-        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.registrymanager.getdeviceasync?view=azure-dotnet#Microsoft_Azure_Devices_RegistryManager_GetDeviceAsync_System_String
-        //
-        [HttpGet]
-        public async Task<ActionResult> GetIoTHubDevice(string deviceId)
+        private static bool IsValidDtmi(string dtmi)
         {
-            Device device = null;
-            Twin twin = null;
-            DEVICE_DATA deviceData = new DEVICE_DATA();
-            deviceData.telemetry = new List<TELEMETRY_DATA>();
+            // Regex defined at https://github.com/Azure/digital-twin-model-identifier#validation-regular-expressions
+            Regex rx = new Regex(@"^dtmi:[A-Za-z](?:[A-Za-z0-9_]*[A-Za-z0-9])?(?::[A-Za-z](?:[A-Za-z0-9_]*[A-Za-z0-9])?)*;[1-9][0-9]{0,8}$");
+            return rx.IsMatch(dtmi);
+        }
 
-            // Retrieve device
-            device = await _helper.GetIoTHubDevice(deviceId).ConfigureAwait(false);
-
-            // Retrieve Deivce Twin for the device
-            twin = await _helper.GetDeviceTwin(deviceId).ConfigureAwait(false);
-
-            if (device == null || twin == null)
+        private static string DtmiToPath(string dtmi)
+        {
+            if (!IsValidDtmi(dtmi))
             {
-                return BadRequest();
+                return null;
             }
-
-            deviceData.deviceId = device.Id;
-            deviceData.connectionState = device.ConnectionState.ToString();
-            deviceData.status = device.Status.ToString();
-            deviceData.authenticationType = device.Authentication.Type.ToString();
-
-            if (device.Authentication.Type == AuthenticationType.Sas)
-            {
-                deviceData.primaryKey = device.Authentication.SymmetricKey.PrimaryKey;
-                deviceData.secondaryKey = device.Authentication.SymmetricKey.SecondaryKey;
-            }
-
-            JObject twinJson = (JObject)JsonConvert.DeserializeObject(twin.ToJson());
-
-            // Check if this is IoT Plug and Play device or not
-            if (twinJson.ContainsKey("modelId"))
-            {
-                deviceData.deviceModelId = twin.ModelId;
-
-                // Resolve Device Model
-                var dtmiContent = string.Empty;
-                try
-                {
-                    dtmiContent = await Resolve(deviceData.deviceModelId);
-                }
-                catch
-                {
-                    return Json(deviceData);
-                }
-
-                if (!string.IsNullOrEmpty(dtmiContent))
-                {
-                    ModelParser parser = new ModelParser();
-                    parser.DtmiResolver = DtmiResolver;
-                    //var parsedDtmis = await parser.ParseAsync(models.Values);
-                    var parsedDtmis = await parser.ParseAsync(new List<string> { dtmiContent });
-                    Console.WriteLine("Parsing success!");
-
-                    var interfaces = parsedDtmis.Where(r => r.Value.EntityKind == DTEntityKind.Telemetry).ToList();
-                    foreach (var dt in interfaces)
-                    {
-                        TELEMETRY_DATA data = new TELEMETRY_DATA();
-                        DTTelemetryInfo telemetryInfo = dt.Value as DTTelemetryInfo;
-                        if (telemetryInfo.DisplayName.Count > 0)
-                        {
-                            data.TelemetryDisplayName = telemetryInfo.DisplayName["en"];
-                        }
-
-                        if (telemetryInfo.SupplementalProperties.Count > 0)
-                        {
-                            if (telemetryInfo.SupplementalProperties.ContainsKey("unit"))
-                            {
-                                DTUnitInfo unitInfo = telemetryInfo.SupplementalProperties["unit"] as DTUnitInfo;
-                                data.unit = unitInfo.Symbol;
-                            }
-                        }
-
-                        data.dataType = telemetryInfo.Schema.EntityKind == DTEntityKind.Integer ? "Long" : "Double";
-                        data.TelemetryName = telemetryInfo.Name;
-                        //data.TelemetryType = telemetryInfo.Schema;
-                        deviceData.telemetry.Add(data);
-                    }
-                }
-            }
-            return Json(deviceData);
+            // dtmi:com:example:Thermostat;1 -> dtmi/com/example/thermostat-1.json
+            return $"/{dtmi.ToLowerInvariant().Replace(":", "/").Replace(";", "-")}.json";
         }
 
-        // Register a new device with IoT Hub
-        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.registrymanager.adddeviceasync?view=azure-dotnet#Microsoft_Azure_Devices_RegistryManager_AddDeviceAsync_Microsoft_Azure_Devices_Device_
-        [HttpPost]
-        public async Task<bool> AddIoTHubDevice(string deviceId)
-        {
-            return await _helper.AddIoTHubDevice(deviceId);
-        }
-
-        // Deletes a previously registered device from IoT Hub
-        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.registrymanager.removedeviceasync?view=azure-dotnet#Microsoft_Azure_Devices_RegistryManager_RemoveDeviceAsync_Microsoft_Azure_Devices_Device_System_Threading_CancellationToken_
-        [HttpDelete]
-        public async Task<bool> DeleteIoTHubDevice(string deviceId)
-        {
-            return await _helper.DeleteIoTHubDevice(deviceId);
-        }
-
-        // Gets Twin from IotHub
-        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.registrymanager.gettwinasync?view=azure-dotnet#Microsoft_Azure_Devices_RegistryManager_GetTwinAsync_System_String_
-        [HttpGet]
-        public async Task<ActionResult> GetDeviceTwin(string deviceId)
-        {
-            Twin twin = await _helper.GetDeviceTwin(deviceId);
-            JObject twinJson = (JObject)JsonConvert.DeserializeObject(twin.ToJson());
-            return Json(twinJson.ToString());
-        }
-        #endregion
-
-        /*************************************************************
-        * Device Provisioning Service (DPS)
-        *************************************************************/
-        #region DPS
-        //
-        // Retrieves individual entrollment info.
-        // Supports Symmetric Key only.
-        // To do : Add X.509 support
-        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.provisioning.service.provisioningserviceclient.createindividualenrollmentquery?view=azure-dotnet
-        [HttpGet]
-        public async Task<ActionResult> GetDpsEnrollment(string registrationId)
-        {
-            IndividualEnrollment enrollment;
-            DPS_ENROLLMENT_DATA enrollmentData = new DPS_ENROLLMENT_DATA();
-
-            try
-            {
-                // retrieve the enrollment
-                enrollment = await _helper.GetDpsEnrollment(registrationId).ConfigureAwait(false);
-
-                if (enrollment == null)
-                {
-                    _logger.LogWarning($"Individual enrollment {registrationId} not found");
-                    return BadRequest();
-                }
-
-                AttestationMechanism attestationMechanism = await _helper.GetDpsAttestationMechanism(registrationId).ConfigureAwait(false);
-
-                if (attestationMechanism == null)
-                {
-                    _logger.LogWarning($"Attestation Mechanism for {registrationId} not found");
-                    return BadRequest();
-                }
-
-                if (attestationMechanism.Type.Equals(AttestationMechanismType.SymmetricKey))
-                {
-                    SymmetricKeyAttestation attestation = (SymmetricKeyAttestation)attestationMechanism.GetAttestation();
-                    enrollmentData.registrationId = enrollment.RegistrationId;
-                    enrollmentData.primaryKey = attestation.PrimaryKey;
-                    enrollmentData.secondaryKey = attestation.SecondaryKey;
-                    enrollmentData.status = enrollment.ProvisioningStatus.ToString();
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"Exception in GetEnrollment() : {e.Message}");
-            }
-
-            return Json(enrollmentData);
-        }
-
-        // Add a new individual enrollment
-        // https://docs.microsoft.com/en-us/rest/api/iot-dps/createorupdateindividualenrollment
-        [HttpPost]
-        public async Task<bool> AddDpsEnrollment(string newRegistrationId)
-        {
-            return await _helper.AddDpsEnrollment(newRegistrationId);
-        }
-
-        // Delete a device enrollment record
-        // https://docs.microsoft.com/en-us/rest/api/iot-dps/deleteindividualenrollment/deleteindividualenrollment
-        [HttpDelete]
-        public async Task<bool> DeleteDpsEnrollment(string registrationId)
-        {
-            return await _helper.DeleteDpsEnrollment(registrationId);
-        }
-        #endregion // DPS
-        /*************************************************************
-        * DTDL model resolution
-        *************************************************************/
-        #region DTDL
         private async Task<string> Resolve(string dtmi)
         {
             if (string.IsNullOrEmpty(dtmi))
@@ -251,28 +75,35 @@ namespace Portal.Controllers
                 return string.Empty;
             }
 
+            WebClient wc = new WebClient();
             // Apply model repository convention
             string dtmiPath = DtmiToPath(dtmi.ToString());
-
             if (string.IsNullOrEmpty(dtmiPath))
             {
-                _logger.LogWarning($"Invalid DTMI: {dtmi}");
+                Console.WriteLine($"Invalid DTMI: {dtmi}");
                 return await Task.FromResult<string>(string.Empty);
             }
 
-            string modelContent = string.Empty;
+            Uri modelRepoUrl;
 
-            // if private repo is provided, resolve model with private repo first.
             if (!string.IsNullOrEmpty(_modelRepoUrl))
             {
-                modelContent = getModelContent(_modelRepoUrl, dtmiPath, _gitToken);
+                modelRepoUrl = new Uri(_modelRepoUrl);
             }
-
-            if (string.IsNullOrEmpty(modelContent))
+            else
             {
-                modelContent = getModelContent("https://devicemodels.azure.com", dtmiPath, string.Empty);
+                modelRepoUrl = new Uri("https://devicemodels.azure.com");
             }
 
+            Uri fullPath = new Uri(modelRepoUrl, dtmiPath);
+            string fullyQualifiedPath = fullPath.ToString();
+
+            if (!string.IsNullOrEmpty(_gitToken))
+            {
+                var token = $"token {_gitToken}";
+                wc.Headers.Add("Authorization", token);
+            }
+            var modelContent = wc.DownloadString(fullyQualifiedPath);
             return modelContent;
         }
 
@@ -295,47 +126,89 @@ namespace Portal.Controllers
             return jsonLds;
         }
 
-        private string getModelContent(string repoUrl, string dtmiPath, string gitToken)
+        [HttpGet]
+        public async Task<ActionResult> GetDevice(string deviceId)
         {
-            string modelContent = string.Empty;
-            WebClient wc = new WebClient();
-            Uri modelRepoUrl = new Uri(repoUrl);
-            Uri fullPath = new Uri(modelRepoUrl, dtmiPath);
-            string fullyQualifiedPath = fullPath.ToString();
-
-            if (!string.IsNullOrEmpty(gitToken))
-            {
-                var token = $"token {gitToken}";
-                wc.Headers.Add("Authorization", token);
-            }
+            Device device = null;
+            Twin twin = null;
+            DEVICE_DATA deviceData = new DEVICE_DATA();
+            deviceData.telemetry = new List<TELEMETRY_DATA>();
 
             try
             {
-                modelContent = wc.DownloadString(fullyQualifiedPath);
+                device = await _helper.GetDevice(deviceId).ConfigureAwait(false);
+                twin = await _helper.GetTwin(deviceId).ConfigureAwait(false);
+
+                if (device == null)
+                {
+                    return BadRequest();
+                }
+
+                var jsonData = JsonConvert.SerializeObject(device);
+
+                deviceData.deviceId = device.Id;
+                deviceData.connectionState = device.ConnectionState.ToString();
+                deviceData.status = device.Status.ToString();
+                deviceData.authenticationType = device.Authentication.Type.ToString();
+            
+                if (device.Authentication.Type == AuthenticationType.Sas)
+                {
+                    deviceData.primaryKey = device.Authentication.SymmetricKey.PrimaryKey;
+                    deviceData.secondaryKey = device.Authentication.SymmetricKey.SecondaryKey;
+                }
+
+                if (twin != null)
+                {
+                    JObject twinJson = (JObject)JsonConvert.DeserializeObject(twin.ToJson());
+
+                    if (twinJson.ContainsKey("modelId"))
+                    {
+                        deviceData.modelId = twin.ModelId;
+
+                        var dtmiContent = await Resolve(deviceData.modelId);
+
+                        if (!string.IsNullOrEmpty(dtmiContent))
+                        {
+                            ModelParser parser = new ModelParser();
+                            parser.DtmiResolver = DtmiResolver;
+                            //var parsedDtmis = await parser.ParseAsync(models.Values);
+                            var parsedDtmis = await parser.ParseAsync(new List<string> { dtmiContent });
+                            Console.WriteLine("Parsing success!");
+
+                            var interfaces = parsedDtmis.Where(r => r.Value.EntityKind == DTEntityKind.Telemetry).ToList();
+                            foreach (var dt in interfaces)
+                            {
+                                TELEMETRY_DATA data = new TELEMETRY_DATA();
+                                DTTelemetryInfo telemetryInfo = dt.Value as DTTelemetryInfo;
+                                if (telemetryInfo.DisplayName.Count > 0)
+                                {
+                                    data.TelemetryDisplayName = telemetryInfo.DisplayName["en"];
+                                }
+
+                                if (telemetryInfo.SupplementalProperties.Count > 0)
+                                {
+                                    if (telemetryInfo.SupplementalProperties.ContainsKey("unit"))
+                                    {
+                                        DTUnitInfo unitInfo = telemetryInfo.SupplementalProperties["unit"] as DTUnitInfo;
+                                        data.unit = unitInfo.Symbol;
+                                    }
+                                }
+
+                                data.dataType = telemetryInfo.Schema.EntityKind == DTEntityKind.Integer ? "Long" : "Double";
+                                data.TelemetryName = telemetryInfo.Name;
+                                //data.TelemetryType = telemetryInfo.Schema;
+                                deviceData.telemetry.Add(data);
+                            }
+                        }
+                    }
+                }
             }
-            catch (System.Net.WebException e)
+            catch (Exception ex)
             {
-                _logger.LogError($"Exception in getModelContent() : {e.Message}");
+                _logger.LogError($"Error {ex}");
             }
 
-            return modelContent;
-        }
-
-        private static bool IsValidDtmi(string dtmi)
-        {
-            // Regex defined at https://github.com/Azure/digital-twin-model-identifier#validation-regular-expressions
-            Regex rx = new Regex(@"^dtmi:[A-Za-z](?:[A-Za-z0-9_]*[A-Za-z0-9])?(?::[A-Za-z](?:[A-Za-z0-9_]*[A-Za-z0-9])?)*;[1-9][0-9]{0,8}$");
-            return rx.IsMatch(dtmi);
-        }
-
-        private static string DtmiToPath(string dtmi)
-        {
-            if (!IsValidDtmi(dtmi))
-            {
-                return null;
-            }
-            // dtmi:com:example:Thermostat;1 -> dtmi/com/example/thermostat-1.json
-            return $"/{dtmi.ToLowerInvariant().Replace(":", "/").Replace(";", "-")}.json";
+            return Json(deviceData);
         }
 
         [HttpGet]
@@ -390,7 +263,7 @@ namespace Portal.Controllers
 
             return Json(commandData);
         }
-        // Calls method
+
         [HttpPost]
         public async Task<bool> SendCommand(string deviceid, string command, string payload)
         {
@@ -406,6 +279,50 @@ namespace Portal.Controllers
 
             return true;
         }
-        #endregion
+
+
+        // https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.devices.registrymanager?view=azure-dotnet
+        [HttpPost]
+        public async Task<bool> AddDevice(string deviceId)
+        {
+
+            return await _helper.AddDevice(deviceId);
+        }
+
+        [HttpPost]
+        public async Task<Twin> SetModelId(string connectionString, string modelId)
+        {
+            return await _helper.SetModelId(connectionString, modelId);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult> ConnectDevice(string connectionString, string modelId)
+        {
+            Twin twin = await _helper.ConnectDevice(connectionString, modelId);
+            return Json(twin.ToString());
+        }
+
+        [HttpPost]
+        public async Task<ActionResult> SendTelemetry(string connectionString, string modelId)
+        {
+            
+            Twin twin = await _helper.SendTelemetry(connectionString, modelId);
+            return Json(twin.ToString());
+        }
+
+        [HttpGet]
+        public async Task<ActionResult> GetTwin(string deviceId)
+        {
+
+            Twin twin = await _helper.GetTwin(deviceId);
+            JObject twinJson = (JObject)JsonConvert.DeserializeObject(twin.ToJson());
+            return Json(twinJson.ToString());
+        }
+
+        [HttpDelete]
+        public async Task<bool> DeleteDevice(string deviceId)
+        {
+            return await _helper.DeleteDevice(deviceId);
+        }
     }
 }

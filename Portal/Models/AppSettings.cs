@@ -26,32 +26,40 @@ namespace Portal.Models
         public string tenantId { get; set; }
         public string tsiUri { get; set; }
         public string tsiSecret { get; set; }
+
+        // to do : Convert to IoT Plug and Play
+        public string temperatureName { get; set; }
+        public string humidityName { get; set; }
     };
 
-    public class ModelRepositorySetting
+    public class ModelRepository
     {
         public string repoUrl { get; set; }
     }
 
-    public class GitHubSetting { 
+    public class GitHub { 
         public string token { get; set; }
-    }
-
-    public class DpsSetting
-    {
-        public string IdScope { get; set; }
-        public string ConnectionString { get; set; }
     }
 
     public class AppSettings
     {
         public SignalrSetting SignalR { get; set; }
         public IotHubSetting IoTHub { get; set; }
-        public DpsSetting Dps { get; set; }
         public AzureMap AzureMap { get; set; }
         public TimeSeriesInsights TimeSeriesInsights { get; set; }
-        public ModelRepositorySetting ModelRepository { get; set; }
-        public GitHubSetting GitHub { get; set; }
+        public ModelRepository ModelRepository { get; set; }
+        public GitHub GitHub { get; set; }
     }
+
+    //public class AzureSetting
+    //{
+    //    public SignalrSetting SignalR { get; set; }
+    //    public IotHubSetting IoTHub { get; set; }
+    //}
+
+    //public class AppSettings
+    //{
+    //    public AzureSetting Azure { get; set;}
+    //}
 }
 

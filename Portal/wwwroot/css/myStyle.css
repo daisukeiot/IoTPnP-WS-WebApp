@@ -189,48 +189,28 @@ div.itemBody {
     margin-bottom: 5px;
 }
 
-select#DeviceList, select#EnrollmentList, input#newDeviceId, input#newModelId {
+select#DeviceList, input#newDeviceId, input#newModelId {
     width: 98%;
     height: 2.0em;
     padding: 0px 5px 0px 5px;
-    margin: 0;
+    margin:0;
 }
 
 div.modal-dialog {
-    min-width: 480px;
-    max-width: 40vw;
-    border-radius: 6px;
-    background-color: rgb(242, 242,242);
-}
-
-div.modeal-content {
-    border: 0;
-}
-
-div.modal-header {
-    text-align: center;
-    font-size: 1.3em;
-    color: white;
-    background-color: black;
-    border-radius: 6px 6px 0px 0px;
-    margin: auto;
-    align-items: stretch;
-    display: flow-root
+    font-size: 1.2em;
 }
 
 div.model-body {
-    text-align: center;
-    font-size: 1.0em;
     text-align: left;
 }
 
 div.model-footer {
-    text-align: center;
+    text-align: right;
 }
 
 input#newDeviceId, input#newModelId {
     margin-bottom: 10px;
-    font-size: 1em;
+    font-size: 1.2em;
 }
 
 button, label {
@@ -241,6 +221,7 @@ button, label {
 }
 
 button:hover {
+
     text-decoration: none;
     background-color: rgb(220, 220, 220);
 }

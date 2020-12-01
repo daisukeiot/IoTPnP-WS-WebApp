@@ -31,15 +31,13 @@ namespace Portal.Controllers
         public async Task<IActionResult> Index()
         {
             HomeViewModel homeView = new HomeViewModel();
-            homeView.deviceList = await _helper.GetIoTHubDevices();
-            homeView.enrollmentList = await _helper.GetDpsEnrollments();
+            homeView.deviceList = await _helper.GetDevices();
             ViewData["IoTHubName"] = _helper.GetIoTHubName(_appSettings.IoTHub.ConnectionString);
             ViewData["mapKey"] = _appSettings.AzureMap.MapKey.ToString();
             ViewData["TsiClientId"] = _appSettings.TimeSeriesInsights.clientId.ToString();
             ViewData["TsiTenantId"] = _appSettings.TimeSeriesInsights.tenantId.ToString();
             ViewData["TsiUri"] = _appSettings.TimeSeriesInsights.tsiUri.ToString();
             ViewData["TsiSecret"] = _appSettings.TimeSeriesInsights.tsiSecret.ToString();
-            ViewData["DpsIdScope"] = _appSettings.Dps.IdScope.ToString();
             return View(homeView);
         }
 
