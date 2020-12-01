@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Azure.Devices;
 using Microsoft.Azure.Devices.Client;
 using Microsoft.Azure.Devices.Common.Exceptions;
+using Microsoft.Azure.Devices.Provisioning.Service;
 using Microsoft.Azure.Devices.Shared;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,16 +25,18 @@ namespace Portal.Helper
 {
     public interface IIoTHubHelper
     {
-        Task<Twin> SetModelId(string connectionString, string modelId);
-        Task<bool> AddDevice(string deviceId);
-        Task<bool> DeleteDevice(string deviceId);
-        Task<Device> GetDevice(string deviceId);
-        Task<Twin> GetTwin(string deviceId);
-        Task<IEnumerable<SelectListItem>> GetDevices();
-        Task<Twin> ConnectDevice(string connectionString, string modelId);
-        Task<Twin> SendTelemetry(string connectionString, string modelId);
+        Task<IEnumerable<SelectListItem>> GetIoTHubDevices();
+        Task<Device> GetIoTHubDevice(string deviceId);
+        Task<bool> AddIoTHubDevice(string deviceId);
+        Task<bool> DeleteIoTHubDevice(string deviceId);
+        Task<Twin> GetDeviceTwin(string deviceId);
+        Task<IEnumerable<SelectListItem>> GetDpsEnrollments();
+        Task<IndividualEnrollment> GetDpsEnrollment(string registrationId);
+        Task<AttestationMechanism> GetDpsAttestationMechanism(string registrationId);
+        Task<bool> AddDpsEnrollment(string newRegistrationId);
+        Task<bool> DeleteDpsEnrollment(string registrationId);
         Task<CloudToDeviceMethodResult> SendMethod(string deviceId, string command, string payload);
-        string GetIoTHubName(string connectionString);
+        string GetIoTHubName(string deviceConnectionString);
     }
     public class IoTHubHelper : IIoTHubHelper
     {
@@ -44,6 +47,7 @@ namespace Portal.Helper
         private bool _isConnected;
         private readonly ServiceClient _serviceClient;
         private readonly DigitalTwinClient _digitalTwinClient;
+        private readonly ProvisioningServiceClient _provisioningServiceClient;
 
         public IoTHubHelper(IOptions<AppSettings> config, ILogger<IoTHubHelper> logger)
         {
@@ -52,11 +56,47 @@ namespace Portal.Helper
             _registryManager = RegistryManager.CreateFromConnectionString(_appSettings.IoTHub.ConnectionString);
             _serviceClient = ServiceClient.CreateFromConnectionString(_appSettings.IoTHub.ConnectionString);
             _digitalTwinClient = DigitalTwinClient.CreateFromConnectionString(_appSettings.IoTHub.ConnectionString);
+            _provisioningServiceClient = ProvisioningServiceClient.CreateFromConnectionString(_appSettings.Dps.ConnectionString);
             _deviceClient = null;
             _isConnected = false;
         }
 
-        public async Task<Device> GetDevice(string deviceId)
+        #region IOTHUB
+        /**********************************************************************************
+         * Get list of devices from IoT Hub
+         *********************************************************************************/
+        public async Task<IEnumerable<SelectListItem>> GetIoTHubDevices()
+        {
+            List<SelectListItem> deviceList = new List<SelectListItem>();
+            // add empty one
+            deviceList.Add(new SelectListItem { Value = "", Text = "" });
+
+            try
+            {
+                IQuery query = _registryManager.CreateQuery("select * from devices");
+
+                while (query.HasMoreResults)
+                {
+                    var twins = await query.GetNextAsTwinAsync().ConfigureAwait(false);
+                    foreach (var twin in twins)
+                    {
+                        _logger.LogInformation($"Found a device : {twin.DeviceId}");
+                        deviceList.Add(new SelectListItem { Value = twin.DeviceId, Text = twin.DeviceId });
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in GetIoTHubDevices() : {e.Message}");
+            }
+
+            return deviceList;
+        }
+
+        /**********************************************************************************
+         * Retrieves the specified Device object.
+         *********************************************************************************/
+        public async Task<Device> GetIoTHubDevice(string deviceId)
         {
             Device device = null;
             try
@@ -65,39 +105,238 @@ namespace Portal.Helper
             }
             catch (Exception e)
             {
-                _logger.LogError($"GetTwin: {e.Message}");
+                _logger.LogError($"Exception in GetIoTHubDevice() : {e.Message}");
             }
             return device;
         }
 
-        public async Task<Twin> GetTwin(string deviceId)
+        /**********************************************************************************
+         * Register a new device with IoT Hub
+         *********************************************************************************/
+        public async Task<bool> AddIoTHubDevice(string deviceId)
+        {
+            Device device = null;
+            bool bCreated = false;
+
+            try
+            {
+                device = await _registryManager.GetDeviceAsync(deviceId.ToString());
+
+                if (device == null)
+                {
+                    _logger.LogDebug($"Creating a new device : '{deviceId}'");
+                    device = await _registryManager.AddDeviceAsync(new Device(deviceId.ToString()));
+                    bCreated = true;
+                }
+                else
+                {
+                    _logger.LogWarning($"Device already exist : '{deviceId}'");
+                }
+            }
+            catch (DeviceAlreadyExistsException)
+            {
+                _logger.LogWarning($"Exception Device already exist : '{deviceId}'");
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in AddIoTHubDevice() : {e.Message}");
+            }
+            return bCreated;
+        }
+
+        /**********************************************************************************
+         * Deletes a previously registered device from IoT Hub
+         *********************************************************************************/
+        public async Task<bool> DeleteIoTHubDevice(string deviceId)
+        {
+            try
+            {
+                _logger.LogDebug($"Removing {deviceId}");
+                await _registryManager.RemoveDeviceAsync(deviceId.ToString());
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in DeleteIoTHubDevice() : {e.Message}");
+                return false;
+            }
+            return true;
+        }
+
+        /**********************************************************************************
+         * Gets Twin from IoT Hub
+         *********************************************************************************/
+        public async Task<Twin> GetDeviceTwin(string deviceId)
         {
             Twin twin = null;
 
             try
             {
+                _logger.LogDebug($"Retrieving Twin for {deviceId}");
                 twin = await _registryManager.GetTwinAsync(deviceId);
             }
             catch (Exception e)
             {
-                _logger.LogError($"GetTwin: {e.Message}");
+                _logger.LogError($"Exception in GetDeviceTwin() : {e.Message}");
             }
             return twin;
         }
 
-        public async Task<Twin> SetModelId(string connectionString, string modelId)
+        #endregion // IOTHUB
+
+        #region DPS
+        /**********************************************************************************
+         * Get list of individual entrollments from DPS
+         *********************************************************************************/
+        public async Task<IEnumerable<SelectListItem>> GetDpsEnrollments()
+        {
+            List<SelectListItem> enrollmentList = new List<SelectListItem>();
+            // add empty one
+            enrollmentList.Add(new SelectListItem { Value = "", Text = "" });
+
+            try
+            {
+                QuerySpecification querySpecification = new QuerySpecification("SELECT * FROM enrollments");
+                using (Query query = _provisioningServiceClient.CreateIndividualEnrollmentQuery(querySpecification))
+                {
+                    while (query.HasNext())
+                    {
+                        QueryResult queryResult = await query.NextAsync().ConfigureAwait(false);
+                        foreach (IndividualEnrollment enrollment in queryResult.Items)
+                        {
+                            // we only support symmetric key for now
+                            if (enrollment.Attestation.GetType().Name.Equals("SymmetricKeyAttestation"))
+                            {
+                                enrollmentList.Add(new SelectListItem { Value = enrollment.RegistrationId, Text = enrollment.RegistrationId });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in GetDpsEnrollments() : {e.Message}");
+            }
+
+            return enrollmentList;
+        }
+
+        /**********************************************************************************
+         * Retrive Individual Enrollment from DPS
+         *********************************************************************************/
+        public async Task<IndividualEnrollment> GetDpsEnrollment(string registrationId)
+        {
+            IndividualEnrollment enrollment = null;
+
+            try
+            {
+                QuerySpecification querySpecification = new QuerySpecification("SELECT * FROM enrollments");
+
+                using (Query query = _provisioningServiceClient.CreateIndividualEnrollmentQuery(querySpecification))
+                {
+                    while (query.HasNext() && enrollment == null)
+                    {
+                        QueryResult queryResults = await query.NextAsync().ConfigureAwait(false);
+
+                        foreach (IndividualEnrollment item in queryResults.Items)
+                        {
+                            _logger.LogInformation($"GetDpsEnrollment found enrollment : {item}");
+
+                            if (item.RegistrationId.Equals(registrationId))
+                            {
+                                enrollment = item;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in GetDpsEnrollment() : {e.Message}");
+            }
+
+            return enrollment;
+        }
+
+        /**********************************************************************************
+         * Retrieve attestation from DPS
+         *********************************************************************************/
+        public async Task<AttestationMechanism> GetDpsAttestationMechanism(string registrationId)
+        {
+            AttestationMechanism attestation = null;
+
+            try
+            {
+                attestation = await _provisioningServiceClient.GetIndividualEnrollmentAttestationAsync(registrationId).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in GetDpsEnrollment() : {e.Message}");
+            }
+
+            return attestation;
+        }
+
+        /**********************************************************************************
+         * Add a new individual enrollment
+         *********************************************************************************/
+        public async Task<bool> AddDpsEnrollment(string newRegistrationId)
+        {
+            bool bCreated = false;
+            string primaryKey = "";
+            string secondaryKey = "";
+
+            try
+            {
+                Attestation attestation = new SymmetricKeyAttestation(primaryKey, secondaryKey);
+                IndividualEnrollment individualEnrollment = new IndividualEnrollment(newRegistrationId, attestation);
+                var newEnrollment = await _provisioningServiceClient.CreateOrUpdateIndividualEnrollmentAsync(individualEnrollment).ConfigureAwait(false);
+
+                bCreated = true;
+            }
+            catch (DeviceAlreadyExistsException)
+            {
+            }
+            catch (Exception e)
+            {
+            }
+            return bCreated;
+        }
+
+        /**********************************************************************************
+         * Deletes enrollment from DPS
+         *********************************************************************************/
+        public async Task<bool> DeleteDpsEnrollment(string registrationId)
+        {
+            bool bDeleted = false;
+            try
+            {
+                _logger.LogDebug($"Removing enrollment {registrationId}");
+                await _provisioningServiceClient.DeleteIndividualEnrollmentAsync(registrationId).ConfigureAwait(false);
+                bDeleted = true;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Exception in DeleteDpsEnrollment() : {e.Message}");
+            }
+            return bDeleted;
+        }
+
+        #endregion
+
+        public async Task<Twin> SetModelId(string deviceConnectionString, string deviceModelId)
         {
             Twin twin = null;
             int retry = 10;
 
             var options = new ClientOptions
             {
-                ModelId = modelId,
+                ModelId = deviceModelId,
             };
 
             if (_deviceClient == null)
             {
-                _deviceClient = DeviceClient.CreateFromConnectionString(connectionString, Microsoft.Azure.Devices.Client.TransportType.Mqtt, options);
+                _deviceClient = DeviceClient.CreateFromConnectionString(deviceConnectionString, Microsoft.Azure.Devices.Client.TransportType.Mqtt, options);
                 _deviceClient.SetConnectionStatusChangesHandler(ConnectionStatusChangedHandler);
                 await _deviceClient.OpenAsync();
 
@@ -121,91 +360,11 @@ namespace Portal.Helper
         }
 
         /**********************************************************************************
-         * Add a new IoT Device to IoT Hub
-         *********************************************************************************/
-        public async Task<bool> AddDevice(string deviceId)
-        {
-            Device device = null;
-
-            try
-            {
-                device = await _registryManager.GetDeviceAsync(deviceId.ToString());
-                if (device == null)
-                {
-                    _logger.LogDebug($"Create new device '{deviceId}'");
-                    device = await _registryManager.AddDeviceAsync(new Device(deviceId.ToString()));
-                }
-                else
-                {
-                    _logger.LogDebug($"The device '{deviceId}' already exist.");
-                }
-            }
-            catch (DeviceAlreadyExistsException)
-            {
-                device = await _registryManager.GetDeviceAsync(deviceId);
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"CreateDevice: {e.Message}");
-                return false;
-            }
-            return true;
-        }
-
-        /**********************************************************************************
-         * Delete an IoT Device from IoT Hub
-         *********************************************************************************/
-        public async Task<bool> DeleteDevice(string deviceId)
-        {
-            try
-            {
-                await _registryManager.RemoveDeviceAsync(deviceId.ToString());
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"CreateDevice: {e.Message}");
-                return false;
-            }
-            return true;
-        }
-
-        /**********************************************************************************
-         * Get list of devices from IoT Hub
-         *********************************************************************************/
-        public async Task<IEnumerable<SelectListItem>> GetDevices()
-        {
-            List<SelectListItem> deviceList = new List<SelectListItem>();
-            // add empty one
-            deviceList.Add(new SelectListItem { Value = "", Text = "" });
-
-            try
-            {
-                IQuery query = _registryManager.CreateQuery("select * from devices");
-
-                while (query.HasMoreResults)
-                {
-                    var twins = await query.GetNextAsTwinAsync().ConfigureAwait(false);
-                    foreach (var twin in twins)
-                    {
-                        deviceList.Add(new SelectListItem { Value = twin.DeviceId, Text = twin.DeviceId });
-                        _logger.LogInformation(twin.DeviceId);
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"CreateDevice: {e.Message}");
-            }
-
-            return deviceList;
-        }
-
-        /**********************************************************************************
          * Get a name of IoT Hub from Connection String
          *********************************************************************************/
-        public string GetIoTHubName(string connectionString)
+        public string GetIoTHubName(string deviceConnectionString)
         {
-            return connectionString.Split(';')[0].Split('=')[1];
+            return deviceConnectionString.Split(';')[0].Split('=')[1];
         }
 
         /**********************************************************************************
@@ -227,78 +386,6 @@ namespace Portal.Helper
             {
                 _isConnected = false;
             }
-        }
-
-        /**********************************************************************************
-         * Connect Web Client Simulator to IoT Hub
-         *********************************************************************************/
-        public async Task<Twin> ConnectDevice(string connectionString, string modelId)
-        {
-            Twin twin = null;
-
-            try
-            {
-                if (_deviceClient == null)
-                {
-                    var options = new ClientOptions
-                    {
-                        ModelId = modelId,
-                    };
-
-                    _deviceClient = DeviceClient.CreateFromConnectionString(connectionString, Microsoft.Azure.Devices.Client.TransportType.Mqtt, options);
-
-                    _deviceClient.SetConnectionStatusChangesHandler(ConnectionStatusChangedHandler);
-
-                    await _deviceClient.OpenAsync();
-
-                    while (_isConnected == false)
-                    {
-                        await Task.Delay(10000);
-                    }
-
-                    twin = await _deviceClient.GetTwinAsync();
-
-                }
-                else
-                {
-                    twin = await _deviceClient.GetTwinAsync();
-
-                    await _deviceClient.CloseAsync();
-
-                    _deviceClient.Dispose();
-
-                    _deviceClient = null;
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"ConnectDevice: {e.Message}");
-            }
-
-            return twin;
-        }
-
-        /**********************************************************************************
-         * Sends a telemetry from Web Client simulator
-         *********************************************************************************/
-        public async Task<Twin> SendTelemetry(string connectionString, string modelId)
-        {
-            Twin twin;
-
-            if (_deviceClient == null)
-            {
-                twin = await ConnectDevice(connectionString, modelId);
-            } else
-            {
-                twin = await _deviceClient.GetTwinAsync();
-            }
-
-            var message = new Microsoft.Azure.Devices.Client.Message(Encoding.UTF8.GetBytes("{\"Web Client\":\"Connected\"}"));
-            message.ContentType = "application/json";
-            message.ContentEncoding = "utf-8";
-            await _deviceClient.SendEventAsync(message).ConfigureAwait(false);
-
-            return twin;
         }
 
         public async Task<CloudToDeviceMethodResult> SendMethod(string deviceId, string command, string payload)

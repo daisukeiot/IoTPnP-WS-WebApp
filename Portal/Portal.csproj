@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.Devices" Version="1.28.0-preview-001" />
     <PackageReference Include="Microsoft.Azure.Devices.Client" Version="1.32.0" />
+    <PackageReference Include="Microsoft.Azure.Devices.Provisioning.Service" Version="1.17.0-preview-001" />
     <PackageReference Include="Microsoft.Azure.DigitalTwins.Parser" Version="3.12.5" />
     <PackageReference Include="Microsoft.Azure.EventGrid" Version="3.2.0" />
     <PackageReference Include="Microsoft.Azure.SignalR" Version="1.5.1" />

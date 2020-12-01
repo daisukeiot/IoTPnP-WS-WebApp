@@ -14,6 +14,7 @@ namespace Portal.Models
         public string deviceId { get; set; }
         public IEnumerable<SelectListItem> deviceList { get; set; }
         public string newDeviceId { get; set; }
-        public string newModelId { get; set; }
+       public string registrationId { get; set; }
+        public IEnumerable<SelectListItem> enrollmentList { get; set; }
     }
 }
