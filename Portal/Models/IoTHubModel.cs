@@ -33,8 +33,17 @@ namespace Portal.Models
         public string authenticationType { get; set; }
         public string primaryKey { get; set; }
         public string secondaryKey { get; set; }
-        public string connectionString { get; set; }
-        public string modelId { get; set; }
+        public string deviceConnectionString { get; set; }
+        public string deviceModelId { get; set; }
         public List<TELEMETRY_DATA> telemetry { get; set; }
+    }
+
+    public class DPS_ENROLLMENT_DATA
+    {
+        public string registrationId { get; set; }
+        public string primaryKey { get; set; }
+        public string secondaryKey { get; set; }
+
+        public string status { get; set; }
     }
 }
