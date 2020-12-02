@@ -531,16 +531,6 @@ Script block to update Telemetry/Events grid
                 var jsonData = JSON.parse(payload)
                 addEvent(jsonData.eventId, jsonData.eventType, jsonData.deviceId, jsonData.dtDataSchema, jsonData.eventSource, jsonData.eventTime, jsonData.data);
                 console.log("DeviceLifecycle " + jsonData.eventSource);
-                if (jsonData.eventSource == 'Microsoft.Devices.DeviceCreated') {
-                    Console.log("Device Added");
-                    var newOption = "<option value='" + jsonData.deviceId + "'>" + jsonData.deviceId + "</option>";
-                    $(newOption).insertBefore($("#DeviceList option:last"));
-                    $("#DeviceList").val(jsonData.deviceId);
-                }
-                else if (jsonData.eventSource == 'Microsoft.Devices.DeviceDeleted')
-                {
-                    Console.log("Device Removed");
-                }
             });
 
             hubConnection.on('EventGrid', function (payload) {
@@ -549,8 +539,8 @@ Script block to update Telemetry/Events grid
                 console.log("Event Grid " + jsonData.eventSource);
                 if (jsonData.eventSource == 'Microsoft.Devices.DeviceCreated') {
                     console.log("Device Added");
-                    //var newOption = "<option value='" + jsonData.deviceId + "'>" + jsonData.deviceId + "</option>";
-                    //$(newOption).insertBefore($("#DeviceList option:last"));
+                    var newOption = "<option value='" + jsonData.deviceId + "'>" + jsonData.deviceId + "</option>";
+                    $(newOption).insertAfter($("#DeviceList option:last"));
                     //$("#DeviceList").val(jsonData.deviceId);
                 }
                 else if (jsonData.eventSource == 'Microsoft.Devices.DeviceDeleted') {

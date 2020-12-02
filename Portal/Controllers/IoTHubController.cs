@@ -300,7 +300,7 @@ namespace Portal.Controllers
             string modelContent = string.Empty;
             WebClient wc = new WebClient();
             Uri modelRepoUrl = new Uri(repoUrl);
-            Uri fullPath = new Uri(modelRepoUrl, dtmiPath);
+            Uri fullPath = new Uri($"{modelRepoUrl}{dtmiPath}");
             string fullyQualifiedPath = fullPath.ToString();
 
             if (!string.IsNullOrEmpty(gitToken))
