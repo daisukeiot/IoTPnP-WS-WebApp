@@ -328,7 +328,7 @@ Main Page
     --------------------------------------------------->
     <div class="modal fade" id="ModalCreateDevice" role="dialog" style="">
         <div class="modal-dialog err-pop">
-            <div class="modal-content"  id="NewDeviceModal">
+            <div class="modal-content" id="NewDeviceModal">
                 <div class="modal-header">
                     <strong>Add a Device to IoT Hub</strong>
                 </div>
@@ -412,6 +412,33 @@ Main Page
             </div>
         </div>
     </div>
+
+    <!--------------------------------------------------
+    Modal Dialog to display Device Twin
+    --------------------------------------------------->
+    <div class="modal fade" id="ModalSendCommand" role="dialog">
+        <div class="modal-dialog err-pop" style="width:50vw;min-width:640px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <strong>Send Command</strong>
+                </div>
+                <div class="modal-body" id="commandModal">
+                    @*<table id="commandTable" width="100%">
+                        <tr>
+                            <th width="30%">Command Name</th>
+                            <th width="30%">Command</th>
+                            <th width="30%">Parameter</th>
+                            <th></th>
+                        </tr>
+                    </table>*@
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="DivClose" style="width:45%;padding:3.5px;" data-dismiss="modal"><i class="fas fa-times"></i>Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!--------------------------------------------------
@@ -1050,7 +1077,9 @@ Script block to update Telemetry/Events grid
                     console.log("Get Command : " + json);
                     console.log("Get Length : " + response.length);
                     //var table = document.getElementById("commandTable");
-                    var commandModal = document.getElementById("commandModal");
+                    var commandModal = document.getElementById('commandModal');
+
+                    console.log("Command Modal " + commandModal);
 
                     while (commandModal.firstChild) {
                         commandModal.removeChild(commandModal.firstChild);
