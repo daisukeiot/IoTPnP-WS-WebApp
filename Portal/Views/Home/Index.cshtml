@@ -292,11 +292,12 @@ Main Page
             <label style="font-weight:400">Select Telemetry</label>
             <select id="telemetryList" name="telemetryList" style="padding-left:5px;min-width:10em;height:2.0em"></select>
         </div>
-        <div id="tsiNoSP" style="display: none; text-align:center; position:relative;top:30%;z-index:1;">
-            <div id="tsiNoSpMsg"></div>
+        <div id="tsiNonPnP" style="display: none; text-align:left; position:relative;top:30%;z-index:1;color:red;">
+            <div id="tsiNonPnPMsg">Non IoT Plug and Play Device.</div>
+            <div>Requires cusomization.</div>
         </div>
         <div id="tsiChart" style="min-width: 1024px; width: inherit;">
-            <div id="tsiLineChart" style="position:relative;width: 100%;height:calc(40vh - 2em); margin: 0px;"></div>
+            <div id="tsiLineChart" style="position:relative;width: 100%;height:calc(30vh - 2em); margin: 0px;"></div>
         </div>
     </fieldset>
 
@@ -980,7 +981,7 @@ Script block to update Telemetry/Events grid
         //
         var getTsiToken = function () {
             console.log("Getting TSI Token");
-            document.getElementById('tsiNoSP').style.display = 'none';
+            document.getElementById('tsiNonPnP').style.display = 'none';
             $.ajax({
                 type: "GET",
                 url: '@Url.Action("GetTsiToken", "Tsi")',
@@ -988,8 +989,6 @@ Script block to update Telemetry/Events grid
                     tsiToken = response.toString();
                     console.log("GetTsiToken : " + tsiToken);
                     if (tsiToken.length == 0) {
-                        document.getElementById('tsiNoSpMsg').textContent = "Please configure Time Series Insights";
-                        document.getElementById('tsiNoSP').style.display = "block";
                         document.getElementById('tsiChart').style.display = "none";
                     } else {
                         document.getElementById('tsiChart').style.display = "block";
@@ -998,8 +997,7 @@ Script block to update Telemetry/Events grid
                 error: function(req, status, error) {
                     alert("GetTsiToken Error " + status);
                     tsiToken = "";
-                    document.getElementById('tsiNoSpMsg').textContent = "Please configure Time Series Insights";
-                    document.getElementById('tsiNoSP').style.display = "block";
+                    document.getElementById('tsiChart').style.display = "none";
                 }
             });
         }
@@ -1007,6 +1005,19 @@ Script block to update Telemetry/Events grid
         var runTsqPnP = function (deviceId) {
 
             console.log("Running TSQ for " + deviceId);
+
+            // make sure this is IoT Plug and Play device
+            var deviceModelId = $("#deviceModelId").text();
+
+            if (deviceModelId.startsWith("dtmi:") == false) {
+                document.getElementById('tsiNonPnP').style.display = "block";
+                document.getElementById('tsiLineChart').style.display = "none";
+                return;
+            }
+            else {
+                document.getElementById('tsiNonPnP').style.display = "none";
+                document.getElementById('tsiLineChart').style.display = "block";
+            }
 
             linechart = null;
             // create aggregate expressions, they are S1/S2 SKU query objects
