@@ -40,6 +40,8 @@ namespace Portal.Controllers
             ViewData["TsiUri"] = _appSettings.TimeSeriesInsights.tsiUri.ToString();
             ViewData["TsiSecret"] = _appSettings.TimeSeriesInsights.tsiSecret.ToString();
             ViewData["DpsIdScope"] = _appSettings.Dps.IdScope.ToString();
+            ViewData["tilesetId"] = _appSettings.AzureMap.TilesetId;
+            ViewData["statesetId"] = _appSettings.AzureMap.StatesetId;
             return View(homeView);
         }
 

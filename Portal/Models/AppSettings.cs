@@ -18,6 +18,8 @@ namespace Portal.Models
     public class AzureMap
     {
         public string MapKey { get; set; }
+        public string TilesetId { get; set; }
+        public string StatesetId { get; set; }
     };
 
     public class TimeSeriesInsights

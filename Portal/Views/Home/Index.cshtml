@@ -486,7 +486,8 @@ Script block to update Telemetry/Events grid
         var tsiToken = "";
         var tsiClient
         var lineChart = null;
-
+        var statesetId = @ViewData["statesetId"]
+        var tilesetId = @ViewData["tilesetId"]
         //
         // Initialization on page load
         //
@@ -499,20 +500,52 @@ Script block to update Telemetry/Events grid
 
             // Initialize Azure Map
             var map = new atlas.Map('map-id', {
-                center: [-122.1385, 47.6449093],
+                center: [-122.139192, 47.647472],
                 zoom: 16,
                 language: 'en-US',
                 showLogo: false,
                 renderWorldCopies: true,
-                view:"Auto",
+                view: "Auto",
                 showBuildingModels: true,
-                showFeedbackLink :false,
+                showFeedbackLink: false,
                 style: "satellite_road_labels",
                 authOptions: {
                     authType: 'subscriptionKey',
                     subscriptionKey: `@ViewData["mapKey"]`
                 }
             });
+
+            if (statesetId.length > 0 && tilesetId.length > 0) {
+
+                const levelControl = new atlas.control.LevelControl({
+                    position: "top-left",
+                });
+
+                const indoorManager = new atlas.indoor.IndoorManager(map, {
+                    levelControl, //level picker
+                    tilesetId,
+                    statesetId, //optional
+                });
+
+                map.events.add("levelchanged", indoorManager, (eventData) => {
+                    //put code that runs after a level has been changed
+                    console.log("The level has changed:", eventData);
+                });
+                map.events.add("facilitychanged", indoorManager, (eventData) => {
+                    //put code that runs after a facility has been changed
+                    console.log("The facility has changed:", eventData);
+                });
+
+                map.events.add("click", function (e) {
+                    var features = map.layers.getRenderedShapes(e.position, "indoor");
+                    var result = features.reduce(function (ids, feature) {
+                        if (feature.layer.id == "indoor_unit_office") {
+                            console.log(feature);
+                        }
+                    },
+                    []);
+                });
+            }
 
             map.controls.add([
                 new atlas.control.ZoomControl(),

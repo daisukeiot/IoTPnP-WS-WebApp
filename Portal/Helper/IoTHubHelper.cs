@@ -294,11 +294,12 @@ namespace Portal.Helper
 
                 bCreated = true;
             }
-            catch (DeviceAlreadyExistsException)
-            {
-            }
+            //catch (DeviceAlreadyExistsException)
+            //{
+            //}
             catch (Exception e)
             {
+                _logger.LogError($"Exception in GetDpsEnrollment() : {e.Message}");
             }
             return bCreated;
         }
