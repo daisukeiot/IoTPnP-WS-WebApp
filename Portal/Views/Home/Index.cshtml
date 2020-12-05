@@ -486,8 +486,8 @@ Script block to update Telemetry/Events grid
         var tsiToken = "";
         var tsiClient
         var lineChart = null;
-        var statesetId = @ViewData["statesetId"]
-        var tilesetId = @ViewData["tilesetId"]
+        var statesetId = '@ViewData["statesetId"]';
+        var tilesetId = '@ViewData["tilesetId"]';
         //
         // Initialization on page load
         //
@@ -500,7 +500,7 @@ Script block to update Telemetry/Events grid
 
             // Initialize Azure Map
             var map = new atlas.Map('map-id', {
-                center: [-122.139192, 47.647472],
+                center: [-122.139192, 47.636152],
                 zoom: 16,
                 language: 'en-US',
                 showLogo: false,
@@ -517,6 +517,8 @@ Script block to update Telemetry/Events grid
 
             if (statesetId.length > 0 && tilesetId.length > 0) {
 
+                console.log("state set %s", statesetId);
+                console.log("tile set %s", tilesetId);
                 const levelControl = new atlas.control.LevelControl({
                     position: "top-left",
                 });
