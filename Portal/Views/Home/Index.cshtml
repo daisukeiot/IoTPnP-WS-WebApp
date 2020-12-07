@@ -787,7 +787,7 @@ Script block to update Telemetry/Events grid
                     success: function (response) {
                         var newOption = "<option value='" + newRegId + "'>" + newRegId + "</option>";
                         $(newOption).insertBefore($("#EnrollmentList option:last"));
-                        $("#EnrollmentList").val(newDevice);
+                        $("#EnrollmentList").val(newRegId);
                         getEnrollmentInfo(newRegId);
                     },
                     error: function(req, status, error) {
