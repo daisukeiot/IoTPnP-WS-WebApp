@@ -789,6 +789,7 @@ Script block to update Telemetry/Events grid
                         $(newOption).insertBefore($("#EnrollmentList option:last"));
                         $("#EnrollmentList").val(newRegId);
                         getEnrollmentInfo(newRegId);
+                        enableDisableEnrollmentButtons(false);
                     },
                     error: function(req, status, error) {
                         alert("Error " + status);
