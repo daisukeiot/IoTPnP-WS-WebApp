@@ -530,6 +530,8 @@ Script block to update Telemetry/Events grid
                     statesetId, //optional
                 });
 
+                indoorManager.setDynamicStyling(true);
+
                 map.events.add("levelchanged", indoorManager, (eventData) => {
                     //put code that runs after a level has been changed
                     console.log("The level has changed:", eventData);
