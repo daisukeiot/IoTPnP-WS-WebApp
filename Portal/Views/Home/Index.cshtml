@@ -526,8 +526,8 @@ Script block to update Telemetry/Events grid
 
                 const indoorManager = new atlas.indoor.IndoorManager(map, {
                     levelControl, //level picker
-                    tilesetId,
-                    statesetId, //optional
+                    tilesetId : tilesetId,
+                    statesetId : statesetId, //optional
                 });
 
                 indoorManager.setDynamicStyling(true);
